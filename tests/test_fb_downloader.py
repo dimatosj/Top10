@@ -164,3 +164,24 @@ def test_download_facebook_saved_skips_existing(tmp_path):
     assert stats["skipped"] == 1
     assert stats["processed"] == 0
     mock_dl.assert_not_called()
+
+
+def test_fb_download_cli_invokes_downloader(tmp_path):
+    from click.testing import CliRunner
+    from ig2spotify import cli
+
+    runner = CliRunner()
+    with patch("fb_downloader.download_facebook_saved") as mock_dl:
+        mock_dl.return_value = {"processed": 1, "skipped": 0, "failed": 0}
+        result = runner.invoke(cli, [
+            "--data-dir", str(tmp_path),
+            "fb-download",
+            "--export-path", "/some/export",
+            "--browser", "firefox",
+        ])
+    assert result.exit_code == 0
+    mock_dl.assert_called_once_with(
+        export_path="/some/export",
+        data_dir=str(tmp_path),
+        browser="firefox",
+    )

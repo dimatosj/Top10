@@ -48,5 +48,31 @@ def run(ctx, username):
     click.echo(f"  python ig2spotify.py playlist --data-dir {ctx.obj['data_dir']}")
 
 
+@cli.command("fb-download")
+@click.option("--export-path", required=True, help="Path to Facebook DYI export directory")
+@click.option("--browser", default="chrome", help="Browser to extract cookies from")
+@click.pass_context
+def fb_download(ctx, export_path, browser):
+    """Download saved videos from Facebook export."""
+    from fb_downloader import download_facebook_saved
+    download_facebook_saved(
+        export_path=export_path,
+        data_dir=ctx.obj["data_dir"],
+        browser=browser,
+    )
+
+
+@cli.command("fb-run")
+@click.option("--export-path", required=True, help="Path to Facebook DYI export directory")
+@click.option("--browser", default="chrome", help="Browser to extract cookies from")
+@click.pass_context
+def fb_run(ctx, export_path, browser):
+    """Run fb-download + extract in sequence."""
+    ctx.invoke(fb_download, export_path=export_path, browser=browser)
+    ctx.invoke(extract)
+    click.echo("\nAudio extracted. Ask Claude Code to analyze the posts, then run:")
+    click.echo(f"  python ig2spotify.py playlist --data-dir {ctx.obj['data_dir']}")
+
+
 if __name__ == "__main__":
     cli()
