@@ -80,17 +80,22 @@ def create_playlists(config, data_dir):
         owner = shortcode
         date = ""
         caption = ""
+        source = "instagram"
         if os.path.exists(metadata_path):
             with open(metadata_path) as f:
                 meta = json.load(f)
             owner = meta.get("owner", shortcode)
             date = meta.get("timestamp", "")[:10]
+            source = meta.get("source", "instagram")
         if os.path.exists(caption_path):
             with open(caption_path) as f:
                 caption = f.read()
 
         try:
-            playlist_name = f"IG: @{owner} - {date}"
+            if source == "facebook":
+                playlist_name = f"FB: {date}"
+            else:
+                playlist_name = f"IG: @{owner} - {date}"
             description = caption[:300] if caption else ""
             created = sp.user_playlist_create(
                 user=user_id,

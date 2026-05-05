@@ -95,3 +95,54 @@ def test_create_playlists_skips_existing_playlist(tmp_path):
         )
         stats = create_playlists(config=cfg, data_dir=data_dir)
         assert stats["skipped"] >= 1
+
+
+@patch("spotify_client.get_spotify_client")
+@patch("spotify_client.search_album")
+@patch("spotify_client.get_album_track_uris")
+@patch("spotify_client.add_tracks_batched")
+def test_create_playlists_uses_fb_prefix_for_facebook_source(
+    mock_batch, mock_uris, mock_search, mock_client, tmp_path
+):
+    data_dir = str(tmp_path)
+    analysis_dir = tmp_path / "analysis"
+    analysis_dir.mkdir()
+    posts_dir = tmp_path / "posts" / "fb_555"
+    posts_dir.mkdir(parents=True)
+
+    (posts_dir / "metadata.json").write_text(json.dumps({
+        "shortcode": "fb_555",
+        "owner": "facebook",
+        "timestamp": "2024-04-25T00:00:00+00:00",
+        "url": "https://www.facebook.com/watch/?v=555",
+        "source": "facebook",
+    }))
+    (posts_dir / "caption.txt").write_text("album review video")
+
+    (analysis_dir / "fb_555.json").write_text(json.dumps({
+        "transcript": "check out Kid A by Radiohead",
+        "albums": [{"artist": "Radiohead", "album": "Kid A"}],
+        "has_music": True,
+    }))
+
+    mock_sp = MagicMock()
+    mock_client.return_value = mock_sp
+    mock_sp.current_user.return_value = {"id": "user123"}
+    mock_search.return_value = {"id": "album_id_1", "artists": [{"name": "Radiohead"}]}
+    mock_uris.return_value = ["spotify:track:1", "spotify:track:2"]
+    mock_sp.user_playlist_create.return_value = {
+        "id": "pl_123",
+        "external_urls": {"spotify": "https://open.spotify.com/playlist/pl_123"},
+    }
+
+    from config import Config
+    cfg = Config(
+        spotify_client_id="id",
+        spotify_client_secret="secret",
+        spotify_redirect_uri="http://localhost:8888/callback",
+    )
+    stats = create_playlists(config=cfg, data_dir=data_dir)
+
+    assert stats["processed"] == 1
+    call_kwargs = mock_sp.user_playlist_create.call_args
+    assert call_kwargs.kwargs.get("name") == "FB: 2024-04-25"
