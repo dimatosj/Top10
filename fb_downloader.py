@@ -86,3 +86,61 @@ def download_video(url, output_path, browser="chrome"):
         capture_output=True,
         check=True,
     )
+
+
+def download_facebook_saved(export_path, data_dir, browser="chrome"):
+    check_ytdlp()
+    posts_dir = os.path.join(data_dir, "posts")
+    os.makedirs(posts_dir, exist_ok=True)
+
+    entries = parse_export(export_path)
+    if not entries:
+        print("No video entries found in Facebook export.")
+        return {"processed": 0, "skipped": 0, "failed": 0}
+
+    processed = 0
+    skipped = 0
+    failed = 0
+
+    print(f"Found {len(entries)} video entries in Facebook export.")
+
+    for i, entry in enumerate(entries, 1):
+        video_id = entry["video_id"]
+        post_dir = os.path.join(posts_dir, video_id)
+
+        if os.path.exists(post_dir):
+            skipped += 1
+            continue
+
+        os.makedirs(post_dir, exist_ok=True)
+        video_path = os.path.join(post_dir, "video.mp4")
+
+        try:
+            download_video(entry["url"], video_path, browser=browser)
+
+            timestamp = datetime.fromtimestamp(entry["timestamp"], tz=timezone.utc).isoformat()
+            metadata = {
+                "shortcode": video_id,
+                "timestamp": timestamp,
+                "owner": "facebook",
+                "url": entry["url"],
+                "source": "facebook",
+            }
+
+            with open(os.path.join(post_dir, "caption.txt"), "w") as f:
+                f.write(entry["caption"])
+            with open(os.path.join(post_dir, "metadata.json"), "w") as f:
+                json.dump(metadata, f, indent=2)
+
+            processed += 1
+            print(f"  Downloaded {i}/{len(entries)}: {video_id}")
+        except subprocess.CalledProcessError as e:
+            failed += 1
+            shutil.rmtree(post_dir, ignore_errors=True)
+            print(f"  Failed {video_id}: {e.stderr.decode() if e.stderr else e}")
+        except Exception as e:
+            failed += 1
+            print(f"  Failed {video_id}: {e}")
+
+    print(f"\nDone. Processed: {processed}, Skipped: {skipped}, Failed: {failed}")
+    return {"processed": processed, "skipped": skipped, "failed": failed}

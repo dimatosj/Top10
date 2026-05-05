@@ -83,3 +83,84 @@ def test_download_video_calls_ytdlp(tmp_path):
             capture_output=True,
             check=True,
         )
+
+
+def test_download_facebook_saved_creates_post_dirs(tmp_path):
+    from fb_downloader import download_facebook_saved
+
+    export_dir = tmp_path / "export" / "your_facebook_activity" / "saves_and_collections"
+    export_dir.mkdir(parents=True)
+    (export_dir / "saves_and_collections_v2.json").write_text(json.dumps({
+        "saves_and_collections_v2": [
+            {
+                "timestamp": 1714000000,
+                "title": "Music video",
+                "data": [{"text": "Album review"}],
+                "attachments": [{"data": [{"external_context": {"url": "https://www.facebook.com/watch/?v=555"}}]}],
+            },
+        ]
+    }))
+
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+
+    with patch("fb_downloader.check_ytdlp"):
+        with patch("fb_downloader.download_video") as mock_dl:
+            stats = download_facebook_saved(
+                export_path=str(tmp_path / "export"),
+                data_dir=str(data_dir),
+                browser="chrome",
+            )
+
+    assert stats["processed"] == 1
+    assert stats["skipped"] == 0
+    assert stats["failed"] == 0
+
+    post_dir = data_dir / "posts" / "fb_555"
+    assert post_dir.exists()
+    assert (post_dir / "caption.txt").read_text() == "Album review"
+
+    meta = json.loads((post_dir / "metadata.json").read_text())
+    assert meta["shortcode"] == "fb_555"
+    assert meta["source"] == "facebook"
+    assert meta["url"] == "https://www.facebook.com/watch/?v=555"
+    assert meta["owner"] == "facebook"
+
+    mock_dl.assert_called_once_with(
+        "https://www.facebook.com/watch/?v=555",
+        str(post_dir / "video.mp4"),
+        browser="chrome",
+    )
+
+
+def test_download_facebook_saved_skips_existing(tmp_path):
+    from fb_downloader import download_facebook_saved
+
+    export_dir = tmp_path / "export" / "your_facebook_activity" / "saves_and_collections"
+    export_dir.mkdir(parents=True)
+    (export_dir / "saves_and_collections_v2.json").write_text(json.dumps({
+        "saves_and_collections_v2": [
+            {
+                "timestamp": 1714000000,
+                "title": "Already downloaded",
+                "data": [{"text": "Old"}],
+                "attachments": [{"data": [{"external_context": {"url": "https://www.facebook.com/watch/?v=555"}}]}],
+            },
+        ]
+    }))
+
+    data_dir = tmp_path / "data"
+    post_dir = data_dir / "posts" / "fb_555"
+    post_dir.mkdir(parents=True)
+
+    with patch("fb_downloader.check_ytdlp"):
+        with patch("fb_downloader.download_video") as mock_dl:
+            stats = download_facebook_saved(
+                export_path=str(tmp_path / "export"),
+                data_dir=str(data_dir),
+                browser="chrome",
+            )
+
+    assert stats["skipped"] == 1
+    assert stats["processed"] == 0
+    mock_dl.assert_not_called()
