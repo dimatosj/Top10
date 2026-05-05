@@ -13,9 +13,9 @@ Modular CLI with three independent stages that communicate through a shared `dat
 | Command | Purpose |
 |---------|---------|
 | `download` | Pull saved videos from Instagram |
-| `analyze` | Extract audio, transcribe via Claude, identify albums |
+| `extract` | Extract audio from downloaded videos via ffmpeg |
 | `playlist` | Search Spotify for albums, create playlists |
-| `run` | Execute all three stages in sequence |
+| `run` | Execute download + extract in sequence (analysis done by Claude Code, then run `playlist`) |
 
 ### Project Structure
 
@@ -24,7 +24,7 @@ instagram/
 ├── ig2spotify.py          # CLI entry point (click)
 ├── config.py              # Loads .env, validates required keys
 ├── downloader.py          # instaloader logic
-├── analyzer.py            # audio extraction + Claude API
+├── extractor.py           # ffmpeg audio extraction
 ├── spotify_client.py      # Spotify search + playlist creation
 ├── requirements.txt
 ├── .env                   # secrets (not committed)
@@ -68,38 +68,21 @@ python ig2spotify.py download --username <ig_username> [--data-dir ./data]
 
 ## Stage 2: Analyze
 
-**Module:** `analyzer.py`
+**Performed by:** Claude Code (not a Python script)
 
-**Audio extraction:**
-- Use `ffmpeg` via subprocess to extract MP3 audio from each video
-- Audio file is temporary — deleted after Claude API call
-- Fail fast at startup if `ffmpeg` is not installed
+This stage runs inside a Claude Code session. The user asks Claude Code to analyze the downloaded posts, and Claude Code:
 
-**Claude API call:**
-- Send audio (base64-encoded) + caption text in a single message
-- Claude transcribes the audio and identifies explicitly named albums in one call
-- Strict extraction: only albums where title and artist are clearly stated or unambiguously identifiable
+1. Runs `python ig2spotify.py extract` to extract audio from all downloaded videos via ffmpeg
+2. Iterates through each post in `data/posts/<shortcode>/`
+3. Reads the audio file and caption for each post
+4. Identifies explicitly named albums — only where title and artist are clearly stated or unambiguously identifiable
+5. Writes analysis results to `data/analysis/<shortcode>.json`
 
-**Prompt:**
-```
-You are analyzing an Instagram video about music.
-I'm providing the audio and the post caption.
-
-Transcribe what is said, then identify any music albums
-that are explicitly recommended by name. Only include albums
-where both the album title and artist are clearly stated
-or unambiguously identifiable.
-
-Return JSON:
-{
-  "transcript": "...",
-  "albums": [
-    {"artist": "...", "album": "..."}
-  ]
-}
-
-If no albums are explicitly mentioned, return an empty albums array.
-```
+**Audio extraction helper** (`analyze` subcommand in the CLI):
+- `python ig2spotify.py extract` — uses ffmpeg to extract MP3 audio from each video in `data/posts/`
+- Saves audio as `data/posts/<shortcode>/audio.mp3`
+- Skips posts that already have an extracted audio file
+- Fails fast if ffmpeg is not installed
 
 **Output:** `data/analysis/<shortcode>.json`
 ```json
@@ -112,14 +95,7 @@ If no albums are explicitly mentioned, return an empty albums array.
 }
 ```
 
-**Cost control:** Before processing, print the number of videos to analyze and estimated audio minutes. Prompt for user confirmation before proceeding.
-
 **Idempotency:** Skip posts that already have an analysis file.
-
-**CLI:**
-```
-python ig2spotify.py analyze [--data-dir ./data]
-```
 
 ## Stage 3: Playlist
 
@@ -171,7 +147,6 @@ python ig2spotify.py playlist [--data-dir ./data]
 
 **`.env` file:**
 ```
-ANTHROPIC_API_KEY=sk-...
 SPOTIFY_CLIENT_ID=...
 SPOTIFY_CLIENT_SECRET=...
 SPOTIFY_REDIRECT_URI=http://localhost:8888/callback
@@ -185,16 +160,17 @@ Built with `click`. Shared `--data-dir` option (defaults to `./data`).
 
 ```
 python ig2spotify.py download --username <ig_username>
-python ig2spotify.py analyze
+python ig2spotify.py extract
 python ig2spotify.py playlist
 python ig2spotify.py run --username <ig_username>
 ```
+
+Note: The `run` command executes `download` → `extract` → `playlist`. The analysis step (between `extract` and `playlist`) is performed by Claude Code in-session — it reads the audio files and captions, identifies albums, and writes analysis JSONs.
 
 ## Dependencies
 
 **Python packages:**
 - `instaloader` — Instagram download
-- `anthropic` — Claude API
 - `spotipy` — Spotify API
 - `click` — CLI framework
 - `python-dotenv` — environment loading
