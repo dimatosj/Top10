@@ -70,3 +70,19 @@ def parse_export(export_path):
         })
 
     return entries
+
+
+def check_ytdlp():
+    try:
+        subprocess.run(["yt-dlp", "--version"], capture_output=True, check=True)
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        print("yt-dlp is required but not found. Install it: brew install yt-dlp")
+        sys.exit(1)
+
+
+def download_video(url, output_path, browser="chrome"):
+    subprocess.run(
+        ["yt-dlp", "--cookies-from-browser", browser, "-o", output_path, url],
+        capture_output=True,
+        check=True,
+    )

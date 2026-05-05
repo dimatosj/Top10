@@ -1,6 +1,7 @@
 import json
 import os
 import pytest
+from unittest.mock import patch, MagicMock
 from fb_downloader import parse_export
 
 
@@ -61,3 +62,24 @@ def test_parse_export_skips_non_video_urls(tmp_path):
 
     entries = parse_export(str(tmp_path))
     assert len(entries) == 0
+
+
+def test_check_ytdlp_exits_when_not_found():
+    with patch("subprocess.run", side_effect=FileNotFoundError):
+        with pytest.raises(SystemExit):
+            from fb_downloader import check_ytdlp
+            check_ytdlp()
+
+
+def test_download_video_calls_ytdlp(tmp_path):
+    from fb_downloader import download_video
+    output_path = str(tmp_path / "video.mp4")
+
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0)
+        download_video("https://www.facebook.com/watch/?v=123", output_path, browser="chrome")
+        mock_run.assert_called_once_with(
+            ["yt-dlp", "--cookies-from-browser", "chrome", "-o", output_path, "https://www.facebook.com/watch/?v=123"],
+            capture_output=True,
+            check=True,
+        )
