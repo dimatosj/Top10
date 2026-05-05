@@ -1,0 +1,4 @@
+instaloader
+spotipy
+click
+python-dotenv
