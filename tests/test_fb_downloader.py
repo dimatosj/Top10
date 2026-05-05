@@ -185,3 +185,23 @@ def test_fb_download_cli_invokes_downloader(tmp_path):
         data_dir=str(tmp_path),
         browser="firefox",
     )
+
+
+def test_fb_run_cli_invokes_download_then_extract(tmp_path):
+    from click.testing import CliRunner
+    from ig2spotify import cli
+
+    runner = CliRunner()
+    with patch("fb_downloader.download_facebook_saved") as mock_dl:
+        with patch("extractor.extract_all_audio") as mock_extract:
+            mock_dl.return_value = {"processed": 1, "skipped": 0, "failed": 0}
+            mock_extract.return_value = {"processed": 1, "skipped": 0, "failed": 0}
+            result = runner.invoke(cli, [
+                "--data-dir", str(tmp_path),
+                "fb-run",
+                "--export-path", "/some/export",
+            ])
+    assert result.exit_code == 0
+    mock_dl.assert_called_once()
+    mock_extract.assert_called_once()
+    assert "Audio extracted" in result.output
