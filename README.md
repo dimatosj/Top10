@@ -95,6 +95,46 @@ Whisper frequently garbles artist and album names. The `verify` command searches
 
 Name comparison uses Levenshtein distance (up to 15% of string length), punctuation normalization, and length-aware substring matching to avoid false positives.
 
+## Using with Claude Code
+
+This project is designed to be run from inside [Claude Code](https://claude.ai/code). Claude handles the transcription and album identification step that bridges the audio extraction and playlist creation — no separate Whisper install needed.
+
+### Workflow
+
+Open Claude Code in the project directory and ask it to run the pipeline:
+
+```
+# Instagram
+> run the ig pipeline for username X
+
+# Facebook
+> run the fb pipeline for /path/to/facebook/export
+```
+
+Claude will run the `download` and `extract` commands, then listen to each audio file in `data/audio/`, transcribe it, identify any albums mentioned, and write the analysis JSON files. After that, tell Claude:
+
+```
+> verify and create playlists
+```
+
+Claude will run `verify`, `derive-genres`, `playlist`, and `qobuz-playlist` in sequence.
+
+### Why Claude Code works well here
+
+- **Transcription + identification in one step** -- Claude can listen to the audio files directly, so there's no need for a separate Whisper install. It identifies artist and album names from context, not just raw speech-to-text.
+- **Interactive error correction** -- when `verify` flags albums it can't match, you can discuss corrections with Claude in the same session rather than manually editing JSON files.
+- **End-to-end orchestration** -- Claude runs the CLI commands, reads the output, and decides what to do next. If a download fails or a playlist already exists, it adapts.
+
+### Tips
+
+- Run `! venv/bin/python3 ig2spotify.py <command>` if you need to run a command yourself in the Claude Code session (the `!` prefix runs it in the current shell).
+- For large batches, ask Claude to process audio files in parallel to speed up transcription.
+- The analysis JSON format is simple enough that Claude can write it directly:
+  ```json
+  {"albums": [{"artist": "...", "album": "..."}], "has_music": true}
+  ```
+  Files with no music should be `{"albums": [], "has_music": false}`.
+
 ## Data layout
 
 ```
