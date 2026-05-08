@@ -1,0 +1,8 @@
+instaloader
+spotipy
+click
+python-dotenv
+yt-dlp
+qobuz-dl
+requests
+playwright
