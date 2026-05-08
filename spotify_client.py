@@ -1,8 +1,8 @@
 import json
 import os
-import requests
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
+from utils import load_post_metadata
 
 
 def get_spotify_client(config):
@@ -201,36 +201,19 @@ def create_playlists(config, data_dir):
             skipped += 1
             continue
 
-        metadata_path = os.path.join(posts_dir, shortcode, "metadata.json")
-        caption_path = os.path.join(posts_dir, shortcode, "caption.txt")
-
-        owner = shortcode
-        date = ""
-        caption = ""
-        source = "instagram"
-        if os.path.exists(metadata_path):
-            with open(metadata_path) as f:
-                meta = json.load(f)
-            owner = meta.get("owner", shortcode)
-            date = meta.get("timestamp", "")[:10]
-            source = meta.get("source", "instagram")
-        if os.path.exists(caption_path):
-            with open(caption_path) as f:
-                caption = f.read()
+        owner, caption = load_post_metadata(posts_dir, shortcode)
 
         try:
             genre = analysis.get("genre", "")
             genre_suffix = f" [{genre}]" if genre else ""
             playlist_name = f"@{owner}{genre_suffix}"
             description = caption[:300] if caption else ""
-            token = sp.auth_manager.get_access_token(as_dict=False)
-            resp = requests.post(
-                "https://api.spotify.com/v1/me/playlists",
-                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-                json={"name": playlist_name, "public": False, "description": description},
+            created = sp.user_playlist_create(
+                user=sp.current_user()["id"],
+                name=playlist_name,
+                public=False,
+                description=description,
             )
-            resp.raise_for_status()
-            created = resp.json()
             playlist_id = created["id"]
             playlist_url = created["external_urls"]["spotify"]
 

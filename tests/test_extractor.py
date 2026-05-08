@@ -8,7 +8,7 @@ def test_check_ffmpeg_raises_when_missing(monkeypatch):
     def mock_run(*args, **kwargs):
         raise FileNotFoundError()
     monkeypatch.setattr(subprocess, "run", mock_run)
-    with pytest.raises(SystemExit):
+    with pytest.raises(RuntimeError, match="ffmpeg"):
         check_ffmpeg()
 
 

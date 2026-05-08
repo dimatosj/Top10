@@ -4,6 +4,8 @@ import os
 import requests
 from qobuz_dl.bundle import Bundle
 
+from utils import load_post_metadata
+
 
 class QobuzClient:
     BASE = "https://www.qobuz.com/api.json/0.2/"
@@ -163,7 +165,8 @@ def create_qobuz_playlists(config, data_dir):
         playlist_file = os.path.join(playlists_dir, filename)
 
         if os.path.exists(playlist_file):
-            existing = json.load(open(playlist_file))
+            with open(playlist_file) as f:
+                existing = json.load(f)
             if existing.get("qobuz_playlist_id"):
                 skipped += 1
                 continue
@@ -175,22 +178,7 @@ def create_qobuz_playlists(config, data_dir):
             skipped += 1
             continue
 
-        metadata_path = os.path.join(posts_dir, shortcode, "metadata.json")
-        caption_path = os.path.join(posts_dir, shortcode, "caption.txt")
-
-        owner = shortcode
-        date = ""
-        caption = ""
-        source = "instagram"
-        if os.path.exists(metadata_path):
-            with open(metadata_path) as f:
-                meta = json.load(f)
-            owner = meta.get("owner", shortcode)
-            date = meta.get("timestamp", "")[:10]
-            source = meta.get("source", "instagram")
-        if os.path.exists(caption_path):
-            with open(caption_path) as f:
-                caption = f.read()
+        owner, caption = load_post_metadata(posts_dir, shortcode)
 
         try:
             genre = analysis.get("genre", "")

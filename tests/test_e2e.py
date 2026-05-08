@@ -14,7 +14,6 @@ def populated_data_dir(tmp_path):
     posts_dir = tmp_path / "posts" / "SMOKE01"
     posts_dir.mkdir(parents=True)
 
-    # Create a minimal video with audio
     video_path = str(posts_dir / "video.mp4")
     subprocess.run(
         [
@@ -33,7 +32,6 @@ def populated_data_dir(tmp_path):
         "shortcode": "SMOKE01",
         "timestamp": "2026-03-10T12:00:00",
         "owner": "musiclover",
-        "url": "https://www.instagram.com/p/SMOKE01/",
     }))
 
     return str(tmp_path)
@@ -52,7 +50,7 @@ def test_playlist_skips_when_no_analysis(populated_data_dir):
         spotify_client_secret="secret",
         spotify_redirect_uri="http://localhost:8888/callback",
     )
-    with patch("spotify_client.get_spotify_client") as mock_get:
+    with patch("spotify_client.get_spotify_client"):
         stats = create_playlists(config=cfg, data_dir=populated_data_dir)
         assert stats["processed"] == 0
 
@@ -63,7 +61,6 @@ def test_playlist_creates_from_analysis(populated_data_dir):
 
     with open(os.path.join(analysis_dir, "SMOKE01.json"), "w") as f:
         json.dump({
-            "transcript": "check out Kid A by Radiohead",
             "albums": [{"artist": "Radiohead", "album": "Kid A"}],
             "has_music": True,
         }, f)

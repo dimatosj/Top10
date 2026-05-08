@@ -48,8 +48,8 @@ The Qobuz `user/login` API endpoint is broken upstream as of April 2026. Use tok
 # Download + extract audio
 python ig2spotify.py run --username <instagram_user>
 
-# Transcribe audio files in data/audio/ with Whisper, then have an LLM
-# identify albums and write JSON to data/analysis/. Each file should contain:
+# Transcribe audio files in data/posts/*/audio.mp3 with Whisper, then have
+# an LLM identify albums and write JSON to data/analysis/. Each file should contain:
 # {"albums": [{"artist": "...", "album": "..."}], "has_music": true}
 
 # Verify and correct Whisper errors against Spotify
@@ -139,8 +139,11 @@ Claude will run `verify`, `derive-genres`, `playlist`, and `qobuz-playlist` in s
 
 ```
 data/
-  posts/<shortcode>/       # downloaded videos + metadata
-  audio/<shortcode>.mp3    # extracted audio
-  analysis/<shortcode>.json # transcription + identified albums + genre
+  posts/<shortcode>/
+    video.mp4              # downloaded video
+    audio.mp3              # extracted audio
+    metadata.json          # source, owner, timestamp
+    caption.txt            # original post caption
+  analysis/<shortcode>.json  # transcription + identified albums + genre
   playlists/<shortcode>.json # created playlist IDs and results
 ```

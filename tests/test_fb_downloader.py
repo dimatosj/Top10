@@ -64,9 +64,9 @@ def test_parse_export_skips_non_video_urls(tmp_path):
     assert len(entries) == 0
 
 
-def test_check_ytdlp_exits_when_not_found():
+def test_check_ytdlp_raises_when_not_found():
     with patch("subprocess.run", side_effect=FileNotFoundError):
-        with pytest.raises(SystemExit):
+        with pytest.raises(RuntimeError, match="yt-dlp"):
             from fb_downloader import check_ytdlp
             check_ytdlp()
 

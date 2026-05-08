@@ -1,14 +1,12 @@
 import os
 import subprocess
-import sys
 
 
 def check_ffmpeg():
     try:
         subprocess.run(["ffmpeg", "-version"], capture_output=True, check=True)
     except (FileNotFoundError, subprocess.CalledProcessError):
-        print("ffmpeg is required but not found. Install it: brew install ffmpeg")
-        sys.exit(1)
+        raise RuntimeError("ffmpeg is required but not found. Install it: brew install ffmpeg")
 
 
 def extract_audio(video_path, audio_path):

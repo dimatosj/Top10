@@ -1,17 +1,6 @@
 import json
 import os
-import sys
 import instaloader
-
-
-def save_post_data(post_dir, video_bytes, caption, metadata):
-    os.makedirs(post_dir, exist_ok=True)
-    with open(os.path.join(post_dir, "video.mp4"), "wb") as f:
-        f.write(video_bytes)
-    with open(os.path.join(post_dir, "caption.txt"), "w") as f:
-        f.write(caption or "")
-    with open(os.path.join(post_dir, "metadata.json"), "w") as f:
-        json.dump(metadata, f, indent=2)
 
 
 def download_saved(username, data_dir):
@@ -50,28 +39,20 @@ def download_saved(username, data_dir):
             skipped += 1
             continue
 
-        if not post.is_video:
-            if post.typename == "GraphSidecar":
-                has_video = False
-                for node in post.get_sidecar_nodes():
-                    if node.is_video:
-                        has_video = True
-                        break
-                if not has_video:
-                    skipped += 1
-                    continue
-            else:
-                skipped += 1
-                continue
+        video_url = None
+        if post.is_video:
+            video_url = post.video_url
+        elif post.typename == "GraphSidecar":
+            for node in post.get_sidecar_nodes():
+                if node.is_video:
+                    video_url = node.video_url
+                    break
+
+        if not video_url:
+            skipped += 1
+            continue
 
         try:
-            if post.typename == "GraphSidecar":
-                for node in post.get_sidecar_nodes():
-                    if node.is_video:
-                        video_url = node.video_url
-                        break
-            else:
-                video_url = post.video_url
 
             video_path = os.path.join(post_dir, "video.mp4")
             os.makedirs(post_dir, exist_ok=True)

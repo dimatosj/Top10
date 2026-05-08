@@ -1,8 +1,7 @@
-instaloader
-spotipy
-click
-python-dotenv
-yt-dlp
-qobuz-dl
-requests
-playwright
+click>=8.0
+instaloader>=4.10
+python-dotenv>=1.0
+qobuz-dl>=0.9.9
+requests>=2.28
+spotipy>=2.23
+yt-dlp>=2024.0

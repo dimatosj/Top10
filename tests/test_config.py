@@ -24,5 +24,5 @@ def test_load_config_missing_key_raises(tmp_path, monkeypatch):
     # Clear any previously set environment variables
     monkeypatch.delenv("SPOTIFY_CLIENT_SECRET", raising=False)
     monkeypatch.delenv("SPOTIFY_REDIRECT_URI", raising=False)
-    with pytest.raises(SystemExit):
+    with pytest.raises(ValueError, match="Missing required"):
         load_config(env_path=str(env_file))

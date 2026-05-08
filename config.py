@@ -1,4 +1,3 @@
-import sys
 from dataclasses import dataclass
 from dotenv import load_dotenv
 import os
@@ -26,9 +25,10 @@ def load_config(env_path=".env"):
     load_dotenv(env_path, override=True)
     missing = [k for k in REQUIRED_KEYS if not os.environ.get(k)]
     if missing:
-        print(f"Missing required environment variables: {', '.join(missing)}")
-        print("Copy .env.example to .env and fill in your credentials.")
-        sys.exit(1)
+        raise ValueError(
+            f"Missing required environment variables: {', '.join(missing)}. "
+            "Copy .env.example to .env and fill in your credentials."
+        )
     return Config(
         spotify_client_id=os.environ["SPOTIFY_CLIENT_ID"],
         spotify_client_secret=os.environ["SPOTIFY_CLIENT_SECRET"],

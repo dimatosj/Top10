@@ -2,7 +2,10 @@ import json
 import os
 import pytest
 from unittest.mock import MagicMock, patch, call
-from spotify_client import build_search_query, add_tracks_batched, create_playlists
+from spotify_client import (
+    build_search_query, add_tracks_batched, create_playlists,
+    _names_close, _levenshtein,
+)
 
 
 def test_build_search_query():
@@ -32,6 +35,67 @@ def test_add_tracks_batched_multiple_batches():
     sp.playlist_add_items.assert_any_call("playlist_123", uris[200:250])
 
 
+class TestNamesClose:
+    def test_exact_match(self):
+        assert _names_close("Radiohead", "Radiohead")
+
+    def test_case_insensitive(self):
+        assert _names_close("radiohead", "RADIOHEAD")
+
+    def test_punctuation_stripped(self):
+        assert _names_close("Guns N' Roses", "Guns N Roses")
+        assert _names_close("OK Computer", "OK, Computer")
+
+    def test_semicolon_stripped(self):
+        assert _names_close(
+            "Lucro Sucio y Los Ojos del Vacio",
+            "Lucro sucio; Los ojos del vacio",
+        )
+
+    def test_ampersand_and(self):
+        assert _names_close("Simon & Garfunkel", "Simon and Garfunkel")
+
+    def test_substring_similar_length(self):
+        assert _names_close("caroline", "caroline 2")
+
+    def test_substring_too_short(self):
+        assert not _names_close("Sucio", "Lucro Sucio y Los Ojos del Vacio")
+
+    def test_small_edit_distance(self):
+        assert _names_close("Deafheaven", "Deafhaven")
+
+    def test_completely_different(self):
+        assert not _names_close("Radiohead", "Taylor Swift")
+
+    def test_short_strings_no_false_match(self):
+        assert not _names_close("1234", "Fake Album Title 12345")
+
+    def test_empty_strings(self):
+        assert _names_close("", "")
+        assert not _names_close("", "something")
+
+
+class TestLevenshtein:
+    def test_identical(self):
+        assert _levenshtein("abc", "abc") == 0
+
+    def test_empty(self):
+        assert _levenshtein("", "abc") == 3
+        assert _levenshtein("abc", "") == 3
+
+    def test_single_insertion(self):
+        assert _levenshtein("abc", "abcd") == 1
+
+    def test_single_deletion(self):
+        assert _levenshtein("abcd", "abc") == 1
+
+    def test_substitution(self):
+        assert _levenshtein("abc", "axc") == 1
+
+    def test_completely_different(self):
+        assert _levenshtein("abc", "xyz") == 3
+
+
 def test_create_playlists_skips_no_albums(tmp_path):
     data_dir = str(tmp_path)
     analysis_dir = tmp_path / "analysis"
@@ -43,7 +107,6 @@ def test_create_playlists_skips_no_albums(tmp_path):
         "shortcode": "ABC123",
         "owner": "testuser",
         "timestamp": "2026-01-15T10:30:00",
-        "url": "https://www.instagram.com/p/ABC123/",
     }))
     (posts_dir / "caption.txt").write_text("no music here")
 
@@ -52,8 +115,6 @@ def test_create_playlists_skips_no_albums(tmp_path):
         "albums": [],
         "has_music": False,
     }))
-
-    playlists_dir = tmp_path / "playlists"
 
     with patch("spotify_client.get_spotify_client"):
         from config import Config
@@ -64,7 +125,7 @@ def test_create_playlists_skips_no_albums(tmp_path):
         )
         stats = create_playlists(config=cfg, data_dir=data_dir)
         assert stats["skipped"] >= 1
-        assert not (playlists_dir / "ABC123.json").exists()
+        assert not (tmp_path / "playlists" / "ABC123.json").exists()
 
 
 def test_create_playlists_skips_existing_playlist(tmp_path):
@@ -75,7 +136,6 @@ def test_create_playlists_skips_existing_playlist(tmp_path):
     playlists_dir.mkdir()
 
     (analysis_dir / "XYZ789.json").write_text(json.dumps({
-        "transcript": "check out Kid A by Radiohead",
         "albums": [{"artist": "Radiohead", "album": "Kid A"}],
         "has_music": True,
     }))
@@ -101,7 +161,7 @@ def test_create_playlists_skips_existing_playlist(tmp_path):
 @patch("spotify_client.search_album")
 @patch("spotify_client.get_album_track_uris")
 @patch("spotify_client.add_tracks_batched")
-def test_create_playlists_uses_fb_prefix_for_facebook_source(
+def test_create_playlists_names_with_owner_and_genre(
     mock_batch, mock_uris, mock_search, mock_client, tmp_path
 ):
     data_dir = str(tmp_path)
@@ -112,17 +172,15 @@ def test_create_playlists_uses_fb_prefix_for_facebook_source(
 
     (posts_dir / "metadata.json").write_text(json.dumps({
         "shortcode": "fb_555",
-        "owner": "facebook",
+        "owner": "Josey Records",
         "timestamp": "2024-04-25T00:00:00+00:00",
-        "url": "https://www.facebook.com/watch/?v=555",
-        "source": "facebook",
     }))
     (posts_dir / "caption.txt").write_text("album review video")
 
     (analysis_dir / "fb_555.json").write_text(json.dumps({
-        "transcript": "check out Kid A by Radiohead",
         "albums": [{"artist": "Radiohead", "album": "Kid A"}],
         "has_music": True,
+        "genre": "Alternative & Indie",
     }))
 
     mock_sp = MagicMock()
@@ -145,4 +203,4 @@ def test_create_playlists_uses_fb_prefix_for_facebook_source(
 
     assert stats["processed"] == 1
     call_kwargs = mock_sp.user_playlist_create.call_args
-    assert call_kwargs.kwargs.get("name") == "FB: 2024-04-25"
+    assert call_kwargs.kwargs.get("name") == "@Josey Records [Alternative & Indie]"

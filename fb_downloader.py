@@ -1,9 +1,9 @@
+import hashlib
 import json
 import os
 import re
 import shutil
 import subprocess
-import sys
 from datetime import datetime, timezone
 
 
@@ -32,7 +32,7 @@ def extract_video_id(url):
     match = re.search(r"fb\.watch/([^/?]+)", url)
     if match:
         return f"fb_{match.group(1)}"
-    return f"fb_{abs(hash(url))}"
+    return f"fb_{hashlib.md5(url.encode()).hexdigest()[:12]}"
 
 
 def _parse_old_format(json_path):
@@ -159,8 +159,7 @@ def check_ytdlp():
     try:
         subprocess.run(["yt-dlp", "--version"], capture_output=True, check=True)
     except (FileNotFoundError, subprocess.CalledProcessError):
-        print("yt-dlp is required but not found. Install it: brew install yt-dlp")
-        sys.exit(1)
+        raise RuntimeError("yt-dlp is required but not found. Install it: brew install yt-dlp")
 
 
 def download_video(url, output_path, browser="chrome"):

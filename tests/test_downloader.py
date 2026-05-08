@@ -1,35 +1,25 @@
 import json
 import os
 import pytest
-from downloader import save_post_data
+from unittest.mock import MagicMock, patch
 
 
-def test_save_post_data_writes_files(tmp_path):
-    post_dir = tmp_path / "posts" / "ABC123"
-    save_post_data(
-        post_dir=str(post_dir),
-        video_bytes=b"fake video content",
-        caption="Check out this album",
-        metadata={
-            "shortcode": "ABC123",
-            "timestamp": "2026-01-15T10:30:00",
-            "owner": "musicfan",
-            "url": "https://www.instagram.com/p/ABC123/",
-        },
-    )
-    assert (post_dir / "video.mp4").read_bytes() == b"fake video content"
-    assert (post_dir / "caption.txt").read_text() == "Check out this album"
-    meta = json.loads((post_dir / "metadata.json").read_text())
-    assert meta["shortcode"] == "ABC123"
-    assert meta["owner"] == "musicfan"
+@patch("downloader.instaloader")
+def test_download_saved_skips_existing(mock_il, tmp_path):
+    from downloader import download_saved
 
+    data_dir = str(tmp_path)
+    posts_dir = tmp_path / "posts"
+    posts_dir.mkdir()
+    (posts_dir / "EXISTING").mkdir()
 
-def test_save_post_data_empty_caption(tmp_path):
-    post_dir = tmp_path / "posts" / "DEF456"
-    save_post_data(
-        post_dir=str(post_dir),
-        video_bytes=b"video",
-        caption=None,
-        metadata={"shortcode": "DEF456", "timestamp": "", "owner": "", "url": ""},
-    )
-    assert (post_dir / "caption.txt").read_text() == ""
+    mock_loader = MagicMock()
+    mock_il.Instaloader.return_value = mock_loader
+    mock_profile = MagicMock()
+    mock_il.Profile.from_username.return_value = mock_profile
+
+    mock_post = MagicMock()
+    mock_post.shortcode = "EXISTING"
+    mock_profile.get_saved_posts.return_value = [mock_post]
+
+    download_saved(username="testuser", data_dir=data_dir)
