@@ -35,13 +35,7 @@ def extract_video_id(url):
     return f"fb_{abs(hash(url))}"
 
 
-def parse_export(export_path):
-    json_path = os.path.join(
-        export_path,
-        "your_facebook_activity",
-        "saves_and_collections",
-        "saves_and_collections_v2.json",
-    )
+def _parse_old_format(json_path):
     with open(json_path) as f:
         data = json.load(f)
 
@@ -68,6 +62,95 @@ def parse_export(export_path):
             "title": item.get("title", ""),
             "caption": caption,
         })
+
+    return entries
+
+
+def _extract_saved_poster_names(saves_path):
+    with open(saves_path) as f:
+        data = json.load(f)
+
+    names = set()
+    for item in data.get("saves_v2", []):
+        title = item.get("title", "").replace("’", "'")
+        match = re.search(r"saved (?:a reel from )?(.+)'s post\.", title)
+        if match:
+            names.add(match.group(1).lower())
+    return names
+
+
+def _parse_watched_videos(viewed_path, saved_names=None):
+    with open(viewed_path) as f:
+        data = json.load(f)
+
+    videos_section = None
+    for section in data.get("recently_viewed", []):
+        if "Videos" in section.get("name", ""):
+            videos_section = section
+            break
+
+    if not videos_section:
+        return []
+
+    seen_urls = set()
+    entries = []
+    for entry in videos_section.get("entries", []):
+        uri = entry.get("data", {}).get("uri", "")
+        name = entry.get("data", {}).get("name", "")
+
+        if not uri or not is_video_url(uri):
+            continue
+        if uri in seen_urls:
+            continue
+
+        if saved_names is not None:
+            poster = re.sub(r"'s video$", "", name.replace("’", "'")).lower()
+            if poster not in saved_names:
+                continue
+
+        seen_urls.add(uri)
+        entries.append({
+            "url": uri,
+            "video_id": extract_video_id(uri),
+            "timestamp": entry.get("timestamp", 0),
+            "title": name,
+            "caption": "",
+        })
+
+    return entries
+
+
+def parse_export(export_path):
+    old_path = os.path.join(
+        export_path, "your_facebook_activity",
+        "saves_and_collections", "saves_and_collections_v2.json",
+    )
+    if os.path.exists(old_path):
+        return _parse_old_format(old_path)
+
+    viewed_path = os.path.join(
+        export_path, "logged_information",
+        "interactions", "recently_viewed.json",
+    )
+    if not os.path.exists(viewed_path):
+        print(f"No saved items or watched videos found in export at {export_path}")
+        return []
+
+    saves_path = os.path.join(
+        export_path, "your_facebook_activity",
+        "saved_items_and_collections", "your_saved_items.json",
+    )
+    saved_names = None
+    if os.path.exists(saves_path):
+        saved_names = _extract_saved_poster_names(saves_path)
+        if saved_names:
+            print(f"Cross-referencing {len(saved_names)} saved posters with watched videos...")
+
+    entries = _parse_watched_videos(viewed_path, saved_names)
+
+    if not entries and saved_names:
+        print("No matches after filtering. Using all watched videos.")
+        entries = _parse_watched_videos(viewed_path, saved_names=None)
 
     return entries
 

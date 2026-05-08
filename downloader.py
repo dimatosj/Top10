@@ -73,9 +73,9 @@ def download_saved(username, data_dir):
             else:
                 video_url = post.video_url
 
-            import requests
-            resp = requests.get(video_url)
-            resp.raise_for_status()
+            video_path = os.path.join(post_dir, "video.mp4")
+            os.makedirs(post_dir, exist_ok=True)
+            L.context.get_and_write_raw(video_url, video_path)
 
             metadata = {
                 "shortcode": shortcode,
@@ -83,12 +83,10 @@ def download_saved(username, data_dir):
                 "owner": post.owner_username,
                 "url": f"https://www.instagram.com/p/{shortcode}/",
             }
-            save_post_data(
-                post_dir=post_dir,
-                video_bytes=resp.content,
-                caption=post.caption,
-                metadata=metadata,
-            )
+            with open(os.path.join(post_dir, "caption.txt"), "w") as f:
+                f.write(post.caption or "")
+            with open(os.path.join(post_dir, "metadata.json"), "w") as f:
+                json.dump(metadata, f, indent=2)
             processed += 1
             print(f"  Downloaded {shortcode} ({processed} so far)")
         except Exception as e:

@@ -1,5 +1,6 @@
 import json
 import os
+import requests
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 
@@ -41,6 +42,133 @@ def get_album_track_uris(sp, album_id):
     return uris
 
 
+def _levenshtein(a, b):
+    if len(a) < len(b):
+        a, b = b, a
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a):
+        curr = [i + 1]
+        for j, cb in enumerate(b):
+            curr.append(min(prev[j + 1] + 1, curr[j] + 1, prev[j] + (ca != cb)))
+        prev = curr
+    return prev[-1]
+
+
+def _names_close(a, b):
+    """Check if two names are close enough to be transcription variants."""
+    a, b = a.lower().strip(), b.lower().strip()
+    if a == b:
+        return True
+    strip = lambda s: s.replace(" ", "").replace("-", "").replace("&", "and").replace(".", "").replace(",", "").replace(";", "").replace(":", "")
+    sa, sb = strip(a), strip(b)
+    if sa == sb:
+        return True
+    # One is a substring of the other, but only if lengths are similar
+    shorter, longer = (a, b) if len(a) <= len(b) else (b, a)
+    if len(shorter) > 3 and shorter in longer and len(shorter) >= len(longer) * 0.5:
+        return True
+    # Allow small edit distance relative to string length
+    dist = _levenshtein(sa, sb)
+    max_len = max(len(sa), len(sb))
+    if max_len > 0 and dist <= max(2, max_len * 0.15):
+        return True
+    return False
+
+
+def _fuzzy_find_album(sp, artist, album):
+    """Search Spotify with progressively looser queries to find a misnamed album."""
+    # Pass 1: search by artist, require both artist+album close
+    for query in [f"artist:{artist}", artist]:
+        results = sp.search(q=query, type="album", limit=10)
+        for item in results["albums"]["items"]:
+            sp_artist = item["artists"][0]["name"]
+            sp_album = item["name"]
+            if _names_close(sp_artist, artist) and _names_close(sp_album, album):
+                return item, sp_artist, sp_album
+
+    # Pass 2: search by album title alone — catches cases where Whisper
+    # completely garbled the artist name but got the album right
+    for query in [f"album:{album}", album]:
+        results = sp.search(q=query, type="album", limit=10)
+        for item in results["albums"]["items"]:
+            sp_album = item["name"]
+            if _names_close(sp_album, album):
+                sp_artist = item["artists"][0]["name"]
+                return item, sp_artist, sp_album
+
+    # Pass 3: search by artist+album as free text — catches partial matches
+    # where both fields have minor errors. Require album match (more
+    # distinctive than artist) and album title long enough to avoid false hits.
+    if len(album) >= 8:
+        results = sp.search(q=f"{artist} {album}", type="album", limit=10)
+        for item in results["albums"]["items"]:
+            sp_artist = item["artists"][0]["name"]
+            sp_album = item["name"]
+            if _names_close(sp_album, album):
+                return item, sp_artist, sp_album
+
+    return None, None, None
+
+
+def verify_albums(config, data_dir):
+    analysis_dir = os.path.join(data_dir, "analysis")
+    if not os.path.exists(analysis_dir):
+        print("No analysis directory found.")
+        return
+
+    sp = get_spotify_client(config)
+    analysis_files = sorted(f for f in os.listdir(analysis_dir) if f.endswith(".json"))
+
+    total_albums = 0
+    found_exact = 0
+    found_fuzzy = 0
+    not_found = 0
+    corrections = []
+
+    for filename in analysis_files:
+        path = os.path.join(analysis_dir, filename)
+        with open(path) as f:
+            analysis = json.load(f)
+        if not analysis.get("albums"):
+            continue
+
+        shortcode = filename.replace(".json", "")
+        file_changed = False
+
+        for album_info in analysis["albums"]:
+            artist = album_info["artist"]
+            album_name = album_info["album"]
+            total_albums += 1
+
+            result = search_album(sp, artist, album_name)
+            if result:
+                found_exact += 1
+                continue
+
+            match, correct_artist, correct_album = _fuzzy_find_album(sp, artist, album_name)
+            if match:
+                found_fuzzy += 1
+                old = f"{artist} - {album_name}"
+                new = f"{correct_artist} - {correct_album}"
+                print(f"  FIX  {old}  ->  {new}")
+                album_info["artist"] = correct_artist
+                album_info["album"] = correct_album
+                corrections.append((shortcode, old, new))
+                file_changed = True
+            else:
+                not_found += 1
+                print(f"  ???  {artist} - {album_name}")
+
+        if file_changed:
+            with open(path, "w") as f:
+                json.dump(analysis, f, indent=2)
+
+    print(f"\nVerified {total_albums} albums: {found_exact} exact, "
+          f"{found_fuzzy} corrected, {not_found} not on Spotify")
+    return {"total": total_albums, "exact": found_exact,
+            "corrected": found_fuzzy, "not_found": not_found}
+
+
 def create_playlists(config, data_dir):
     analysis_dir = os.path.join(data_dir, "analysis")
     playlists_dir = os.path.join(data_dir, "playlists")
@@ -53,7 +181,6 @@ def create_playlists(config, data_dir):
 
     analysis_files = sorted(f for f in os.listdir(analysis_dir) if f.endswith(".json"))
     sp = get_spotify_client(config)
-    user_id = sp.current_user()["id"]
 
     processed = 0
     skipped = 0
@@ -92,17 +219,18 @@ def create_playlists(config, data_dir):
                 caption = f.read()
 
         try:
-            if source == "facebook":
-                playlist_name = f"FB: {date}"
-            else:
-                playlist_name = f"IG: @{owner} - {date}"
+            genre = analysis.get("genre", "")
+            genre_suffix = f" [{genre}]" if genre else ""
+            playlist_name = f"@{owner}{genre_suffix}"
             description = caption[:300] if caption else ""
-            created = sp.user_playlist_create(
-                user=user_id,
-                name=playlist_name,
-                public=False,
-                description=description,
+            token = sp.auth_manager.get_access_token(as_dict=False)
+            resp = requests.post(
+                "https://api.spotify.com/v1/me/playlists",
+                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                json={"name": playlist_name, "public": False, "description": description},
             )
+            resp.raise_for_status()
+            created = resp.json()
             playlist_id = created["id"]
             playlist_url = created["external_urls"]["spotify"]
 

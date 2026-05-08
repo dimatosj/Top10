@@ -29,6 +29,16 @@ def extract(ctx):
 
 @cli.command()
 @click.pass_context
+def verify(ctx):
+    """Verify album names against Spotify and fix transcription errors."""
+    from config import load_config
+    from spotify_client import verify_albums
+    cfg = load_config()
+    verify_albums(config=cfg, data_dir=ctx.obj["data_dir"])
+
+
+@cli.command()
+@click.pass_context
 def playlist(ctx):
     """Create Spotify playlists from analysis results."""
     from config import load_config
@@ -46,6 +56,45 @@ def run(ctx, username):
     ctx.invoke(extract)
     click.echo("\nAudio extracted. Ask Claude Code to analyze the posts, then run:")
     click.echo(f"  python ig2spotify.py playlist --data-dir {ctx.obj['data_dir']}")
+
+
+@cli.command("derive-genres")
+@click.pass_context
+def derive_genres_cmd(ctx):
+    """Tag analysis files with genres from Qobuz."""
+    from config import load_config
+    from qobuz_client import derive_genres
+    cfg = load_config()
+    if not (cfg.qobuz_token and cfg.qobuz_user_id) and not (cfg.qobuz_email and cfg.qobuz_password):
+        click.echo("Set QOBUZ_TOKEN + QOBUZ_USER_ID (or QOBUZ_EMAIL + QOBUZ_PASSWORD) in .env")
+        return
+    derive_genres(cfg, data_dir=ctx.obj["data_dir"])
+
+
+@cli.command("qobuz-playlist")
+@click.pass_context
+def qobuz_playlist(ctx):
+    """Create Qobuz playlists from analysis results."""
+    from config import load_config
+    from qobuz_client import create_qobuz_playlists
+    cfg = load_config()
+    if not (cfg.qobuz_token and cfg.qobuz_user_id) and not (cfg.qobuz_email and cfg.qobuz_password):
+        click.echo("Set QOBUZ_TOKEN + QOBUZ_USER_ID (or QOBUZ_EMAIL + QOBUZ_PASSWORD) in .env")
+        return
+    create_qobuz_playlists(cfg, data_dir=ctx.obj["data_dir"])
+
+
+@cli.command("qobuz-verify")
+@click.pass_context
+def qobuz_verify(ctx):
+    """Check which albums are available on Qobuz."""
+    from config import load_config
+    from qobuz_client import verify_qobuz_albums
+    cfg = load_config()
+    if not (cfg.qobuz_token and cfg.qobuz_user_id) and not (cfg.qobuz_email and cfg.qobuz_password):
+        click.echo("Set QOBUZ_TOKEN + QOBUZ_USER_ID (or QOBUZ_EMAIL + QOBUZ_PASSWORD) in .env")
+        return
+    verify_qobuz_albums(cfg, data_dir=ctx.obj["data_dir"])
 
 
 @cli.command("fb-download")
